@@ -93,6 +93,10 @@ class QuietTestResultHandler(IResultHandlerPlugin):
         if args.verbosity == 0:
             return cls(test_count=test_count)
 
+    @classmethod
+    def add_parser_arguments(self, parser, name, option_prefix, dest_prefix):
+        pass
+
     def get_test_description(self, test):
         return get_test_description(test, descriptions=self.descriptions)
 
