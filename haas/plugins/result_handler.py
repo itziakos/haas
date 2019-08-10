@@ -63,14 +63,41 @@ def sort_result_handlers(handlers):
     return list(sort(handlers))
 
 
+def _summary_report_config(args=None):
+    """ Get the summary report config based on arguments
+    """
+    report_lists = [TestCompletionStatus.error, TestCompletionStatus.failure]
+    if args is None:
+        return report_lists
+    if args.report_skipped or args.report_all:
+        report_lists.append(TestCompletionStatus.skipped)
+    if args.report_expected_failures or args.report_all:
+        report_lists.append(TestCompletionStatus.expected_failure)
+    if args.report_unxpected_success or args.report_all:
+        report_lists.append(TestCompletionStatus.unexpected_success)
+    return report_lists
+
+
 class QuietTestResultHandler(IResultHandlerPlugin):
     separator1 = '=' * 70
     separator2 = separator2
 
-    def __init__(self, test_count):
+    _summary_formats = {
+        TestCompletionStatus.failure: 'FAIL',
+        TestCompletionStatus.error: 'ERROR',
+        TestCompletionStatus.unexpected_success: 'unexpected success',
+        TestCompletionStatus.expected_failure: 'expected failure',
+        TestCompletionStatus.skipped: 'skipped',
+    }
+
+    def __init__(self, test_count, report_lists=None):
         self.enabled = True
         self.stream = _WritelnDecorator(sys.stderr)
         self._test_count = test_count
+        if report_lists is None:
+            self._report_lists = _summary_report_config()
+        else:
+            self._report_lists = report_lists
         self.tests_run = 0
         self.descriptions = True
         self.expectedFailures = expectedFailures = []
@@ -90,12 +117,32 @@ class QuietTestResultHandler(IResultHandlerPlugin):
 
     @classmethod
     def from_args(cls, args, name, dest_prefix, test_count):
+        report_lists = _summary_report_config(args)
         if args.verbosity == 0:
-            return cls(test_count=test_count)
+            return cls(test_count=test_count, report_lists=report_lists)
 
     @classmethod
-    def add_parser_arguments(self, parser, name, option_prefix, dest_prefix):
-        pass
+    def add_parser_arguments(cls, parser, name, option_prefix, dest_prefix):
+        parser.add_argument(
+            '--report-skipped', action='store', type=bool,
+            metavar='REPORT_SKIPPED_TESTS',
+            default=cls.OPTION_DEFAULT,
+            help=('Report skipped tests'))
+        parser.add_argument(
+            '--report-expected-failures', action='store', type=bool,
+            metavar='REPORT_EXPECTED_FAILURE_TESTS',
+            default=cls.OPTION_DEFAULT,
+            help=('Report expected failure tests'))
+        parser.add_argument(
+            '--report-unexpected-success', action='store', type=bool,
+            metavar='REPORT_UNEXPECTED_SUCCESS_TESTS',
+            default=cls.OPTION_DEFAULT,
+            help=('Report unexpected success tests'))
+        parser.add_argument(
+            '--report-all', action='store', type=bool,
+            metavar='REPORT_ALL_TESTS',
+            default=cls.OPTION_DEFAULT,
+            help=('Report list for all test types'))
 
     def get_test_description(self, test):
         return get_test_description(test, descriptions=self.descriptions)
@@ -111,6 +158,8 @@ class QuietTestResultHandler(IResultHandlerPlugin):
 
     def stop_test_run(self):
         self.stop_time = time.time()
+        for status in self._report_lists:
+            self.print_list_summary(status)
         self.print_summary()
 
     def print_summary(self):
@@ -149,6 +198,36 @@ class QuietTestResultHandler(IResultHandlerPlugin):
         else:
             self.stream.write("\n")
 
+    def print_list_summary(self, status):
+        """Print the list of tests of a given status.
+
+        Parameters
+        ----------
+        status : TestCompletionStatus
+
+        """
+        results = self._collectors[status]
+        if len(results) == 0:
+            return
+
+        stream = self.stream
+        template = self._summary_formats[status] + ': %s'
+        raised_exception = status in (
+            TestCompletionStatus.error, TestCompletionStatus.failure)
+
+        if not raised_exception:
+            stream.writeln(self.separator1)
+        for result in results:
+            if raised_exception:
+                stream.writeln(self.separator1)
+            stream.writeln(
+                template % self.get_test_description(result.test))
+            if raised_exception:
+                stream.writeln(self.separator2)
+                stream.writeln(result.exception)
+        if not raised_exception:
+            stream.writeln(self.separator2)
+
     def was_successful(self):
         return (len(self.errors) == 0 and
                 len(self.failures) == 0 and
@@ -173,8 +252,9 @@ class StandardTestResultHandler(QuietTestResultHandler):
 
     @classmethod
     def from_args(cls, args, name, dest_prefix, test_count):
+        report_lists = _summary_report_config(args)
         if args.verbosity == 1:
-            return cls(test_count=test_count)
+            return cls(test_count=test_count, report_lists=report_lists)
 
     def __call__(self, result):
         super(StandardTestResultHandler, self).__call__(result)
@@ -195,8 +275,9 @@ class VerboseTestResultHandler(StandardTestResultHandler):
 
     @classmethod
     def from_args(cls, args, name, dest_prefix, test_count):
+        report_lists = _summary_report_config(args)
         if args.verbosity == 2:
-            return cls(test_count=test_count)
+            return cls(test_count=test_count, report_lists=report_lists)
 
     def start_test(self, test):
         super(VerboseTestResultHandler, self).start_test(test)
@@ -219,116 +300,6 @@ class VerboseTestResultHandler(StandardTestResultHandler):
             self.stream.write(" '{0}'".format(result.message))
         self.stream.writeln()
         self.stream.flush()
-
-
-class ListSummaryHandler(IResultHandlerPlugin):
-
-    _result_formats = {
-        TestCompletionStatus.failure: 'FAIL',
-        TestCompletionStatus.error: 'ERROR',
-        TestCompletionStatus.unexpected_success: 'UNEXPECTED',
-        TestCompletionStatus.expected_failure: 'EXPECTED',
-        TestCompletionStatus.skipped: 'SKIPPED',
-    }
-
-    def __init__(
-            self, list_skipped, list_expected_failures,
-            list_unexpected_successes):
-        self.enabled = True
-        self.stream = _WritelnDecorator(sys.stderr)
-        self._collectors = collectors = {
-            TestCompletionStatus.failure: [],
-            TestCompletionStatus.error: [],
-        }
-        if list_skipped:
-            collectors[TestCompletionStatus.skipped] = []
-        if list_expected_failures:
-            collectors[TestCompletionStatus.expected_failure] = []
-        if list_unexpected_successes:
-            collectors[TestCompletionStatus.unexpected_success] = []
-
-    @classmethod
-    def add_parser_arguments(cls, parser, name, option_prefix, dest_prefix):
-        parser.add_argument(
-            '--report-skipped', action='store', type=bool,
-            metavar='REPORT_SKIPPED_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report skipped tests'))
-        parser.add_argument(
-            '--report-expected-failures', action='store', type=bool,
-            metavar='REPORT_EXPECTED_FAILURE_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report expected failure tests'))
-        parser.add_argument(
-            '--report-unexpected-success', action='store', type=bool,
-            metavar='REPORT_UNEXPECTED_SUCCESS_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report unexpected success tests'))
-        parser.add_argument(
-            '--report-all', action='store', type=bool,
-            metavar='REPORT_ALL_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report list for all test types'))
-
-    @classmethod
-    def from_args(cls, args, name, dest_prefix, test_count):
-        return cls(
-            args.list_skipped,
-            args.list_expected_failures,
-            args.list_unexpected_successes)
-
-    def start_test(self, test):
-        pass
-
-    def stop_test(self, test):
-        pass
-
-    def start_test_run(self):
-        pass
-
-    def stop_test_run(self):
-        self.print_list_summary(TestCompletionStatus.error)
-        self.print_list_summary(TestCompletionStatus.failure)
-        skipped = TestCompletionStatus.skipped
-        expected = TestCompletionStatus.expected_failure
-        unexpected = TestCompletionStatus.unexpected_success
-        if unexpected in self._collectors:
-            self.print_list_summary(unexpected)
-        if skipped in self._collectors:
-            self.print_list_summary(skipped)
-        if expected in self._collectors:
-            self.print_list_summary(expected)
-
-    def print_list_summary(self, status):
-        """Print the list of tests of a given status.
-
-        Parameters
-        ----------
-        status : TestCompletionStatus
-
-        """
-        results = self._collectors[status]
-        template = self._result_formats['status'] + ': %s'
-        stream = self.stream
-        raised_exception = status in (
-            TestCompletionStatus.error, TestCompletionStatus.failure)
-        if not raised_exception:
-            stream.writeln(self.separator1)
-        for result in results:
-            if raised_exception:
-                stream.writeln(self.separator1)
-            stream.writeln(
-                template % self.get_test_description(result.test))
-            if raised_exception:
-                stream.writeln(self.separator2)
-                stream.writeln(result.exception)
-        if not raised_exception:
-            stream.writeln(self.separator2)
-
-    def __call__(self, result):
-        collector = self._collectors.get(result.status)
-        if collector is not None:
-            collector.append(result)
 
 
 class TimingResultHandler(IResultHandlerPlugin):
