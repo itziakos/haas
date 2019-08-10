@@ -67,20 +67,17 @@ def _summary_report_config(args=None):
     """ Get the summary report config based on arguments
     """
     report_lists = [TestCompletionStatus.error, TestCompletionStatus.failure]
-    if args is None:
+    if args is None or args.list_summary is None:
         return report_lists
-    if args.report_skipped or args.report_all:
+    if 'skipped' in args.list_summary:
         report_lists.append(TestCompletionStatus.skipped)
-    if args.report_expected_failures or args.report_all:
-        report_lists.append(TestCompletionStatus.expected_failure)
-    if args.report_unxpected_success or args.report_all:
-        report_lists.append(TestCompletionStatus.unexpected_success)
     return report_lists
 
 
 class QuietTestResultHandler(IResultHandlerPlugin):
     separator1 = '=' * 70
     separator2 = separator2
+    OPTION_DEFAULT = object()
 
     _summary_formats = {
         TestCompletionStatus.failure: 'FAIL',
@@ -124,25 +121,8 @@ class QuietTestResultHandler(IResultHandlerPlugin):
     @classmethod
     def add_parser_arguments(cls, parser, name, option_prefix, dest_prefix):
         parser.add_argument(
-            '--report-skipped', action='store', type=bool,
-            metavar='REPORT_SKIPPED_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report skipped tests'))
-        parser.add_argument(
-            '--report-expected-failures', action='store', type=bool,
-            metavar='REPORT_EXPECTED_FAILURE_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report expected failure tests'))
-        parser.add_argument(
-            '--report-unexpected-success', action='store', type=bool,
-            metavar='REPORT_UNEXPECTED_SUCCESS_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report unexpected success tests'))
-        parser.add_argument(
-            '--report-all', action='store', type=bool,
-            metavar='REPORT_ALL_TESTS',
-            default=cls.OPTION_DEFAULT,
-            help=('Report list for all test types'))
+            '--list-summary', nargs='?',
+            help=('Report test list summary'))
 
     def get_test_description(self, test):
         return get_test_description(test, descriptions=self.descriptions)
