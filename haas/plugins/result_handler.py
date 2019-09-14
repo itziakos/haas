@@ -143,7 +143,7 @@ class QuietTestResultHandler(IResultHandlerPlugin):
         self.print_summary()
 
     def print_summary(self):
-        self.stream.writeln(self.separator2)
+        self.stream.writeln('\n' + self.separator2)
         time_taken = self.stop_time - self.start_time
 
         run = self.tests_run
@@ -174,7 +174,7 @@ class QuietTestResultHandler(IResultHandlerPlugin):
         if unexpectedSuccesses:
             infos.append("unexpected successes=%d" % unexpectedSuccesses)
         if infos:
-            self.stream.writeln(" (%s)" % (", ".join(infos),))
+            self.stream.writeln(" (%s)\n" % (", ".join(infos),))
         else:
             self.stream.write("\n")
 
@@ -191,22 +191,25 @@ class QuietTestResultHandler(IResultHandlerPlugin):
             return
 
         stream = self.stream
+        stream.writeln("\n")
         template = self._summary_formats[status] + ': %s'
         raised_exception = status in (
             TestCompletionStatus.error, TestCompletionStatus.failure)
-
         if not raised_exception:
             stream.writeln(self.separator1)
         for result in results:
             if raised_exception:
                 stream.writeln(self.separator1)
-            stream.writeln(
-                template % self.get_test_description(result.test))
-            if raised_exception:
+                stream.writeln(
+                    template % self.get_test_description(result.test))
                 stream.writeln(self.separator2)
                 stream.writeln(result.exception)
+            else:
+                stream.writeln(
+                    template % self.get_test_description(result.test))
         if not raised_exception:
             stream.writeln(self.separator2)
+
 
     def was_successful(self):
         return (len(self.errors) == 0 and
