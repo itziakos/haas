@@ -244,11 +244,11 @@ class TestResult(object):
 
     def __repr__(self):
         template = ('<{0} class={1}, method={2}, exc={3!r}, status={4!r}, '
-                    'duration={5!r}>')
+                    'duration={5!r}>, output={6!r}')
         return template.format(
             type(self).__name__, self.test_class.__name__,
             self.test_method_name, self.exception, self.status,
-            self.duration)
+            self.duration, self.output)
 
     def __eq__(self, other):
         if not isinstance(other, TestResult):
@@ -259,6 +259,7 @@ class TestResult(object):
             self.status == other.status and
             self.exception == other.exception and
             self.message == other.message and
+            self.output == other.output and
             self.duration == other.duration
         )
 
