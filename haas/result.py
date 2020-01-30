@@ -101,6 +101,25 @@ def _format_exception(err, is_failure, stdout=None, stderr=None):
     return ''.join(msgLines)
 
 
+def _format_output(stdout=None, stderr=None):
+    """Format stdout and stderr test output into a single string.
+
+    """
+    msgLines = []
+    if stdout is not None:
+        if not stdout.endswith('\n'):
+            stdout += '\n'
+        msgLines.append(STDOUT_LINE % stdout)
+    if stderr is not None:
+        if not stderr.endswith('\n'):
+            stderr += '\n'
+        msgLines.append(STDERR_LINE % stderr)
+    if len(msgLines) > 0:
+        return ''.join(msgLines)
+    else:
+        return None
+
+
 class TestDuration(object):
     """An orderable representation of the duration of an individual test.
 
@@ -214,11 +233,12 @@ class TestResult(object):
     """
 
     def __init__(self, test_class, test_method_name, status, duration,
-                 exception=None, message=None):
+                 exception=None, message=None, output=None):
         self.test_class = test_class
         self.test_method_name = test_method_name
         self.status = status
         self.exception = exception
+        self.output = output
         self.message = message
         self.duration = duration
 
@@ -269,13 +289,16 @@ class TestResult(object):
         """
         test_class = type(test_case)
         test_method_name = test_case._testMethodName
+        output = None
         if exception is not None:
             exctype, value, tb = exception
             is_failure = exctype is test_case.failureException
             exception = _format_exception(
                 exception, is_failure, stdout, stderr)
+        elif stdout is not None or stderr is not None:
+            output = _format_output(stderr, stdout)
         return cls(test_class, test_method_name, status, duration,
-                   exception, message)
+                   exception, message, output)
 
     @property
     def test(self):
